@@ -4,8 +4,12 @@
 
 document##body##style##margin #= "0";
 
-let foregroundColor = "black";
+/* pale imessage bubble */
+/* let foregroundColor = "#5da9f5"; */
+/* darker imessage bubble */
+let foregroundColor = "#317cf7";
 let backgroundColor = "white";
+let lineWidth = 3;
 
 let console = document##createElement("div");
 console##style##width #= "300px";
@@ -34,7 +38,6 @@ let context = canvas##getContext("2d");
 context##fillStyle #= backgroundColor;
 context##fillRect(0, 0, width, height);
 
-let previousDrawing = ref(None);
 type touching =
   | Down(float)
   | Up(float)
@@ -45,10 +48,9 @@ type point = {
   y: int,
 };
 let strokes: ref(Js.Dict.t(array(point))) = ref(Js.Dict.empty());
-let maxTimeForCountingSomethingAsTouch = 150.;
 let objectsOnScene = [||];
 let objectTypes = [|Objs.obj1|];
-/* next: Objs.obj1 has too many points */
+/* TODO: Objs.obj1 has too many points */
 
 canvas##addEventListener("touchstart", e => {
   e##preventDefault();
@@ -65,20 +67,70 @@ canvas##addEventListener("touchstart", e => {
      ); */
 });
 
+let distance = (p1, p2) => {
+  let x = p1.x - p2.x;
+  let y = p1.y - p2.y;
+  Js.Math.sqrt(float_of_int(x * x + y * y));
+};
+
 canvas##addEventListener("touchend", e => {
   e##preventDefault();
-  log(Js.Array.map(t => t##identifier, Js.Array.from(e##targetTouches)));
   switch (touching^) {
   | First
   | Up(_) => ()
   | Down(startTime) =>
     let ellapsedTime = Js.Date.now() -. startTime;
-    if (ellapsedTime < maxTimeForCountingSomethingAsTouch) {
-      log("commit drawing");
-      /* turn dots into an object */
-      previousDrawing := None;
-      log(strokes);
-      strokes := Js.Dict.empty();
+    let touchesRemaining = Js.Array.from(e##targetTouches)->Js.Array.length;
+    let maxTimeForCountingSomethingAsConfirm = 130.;
+    if (ellapsedTime < maxTimeForCountingSomethingAsConfirm
+        && touchesRemaining == 0) {
+      let shortDistanceThreshold = 10.;
+      let allLiftedTouchesDrewShortStrokes =
+        Js.Array.every(
+          touch => {
+            let points =
+              Js.Dict.get(strokes^, Js.String.make(touch##identifier));
+            switch (points) {
+            | None => true
+            | Some([||] | [|_|]) => true
+            | Some(points) =>
+              let firstPoint = points[0];
+              let lastPoint = points[Js.Array.length(points) - 1];
+              let dist = distance(firstPoint, lastPoint);
+              dist < shortDistanceThreshold;
+            };
+          },
+          Js.Array.from(e##changedTouches),
+        );
+      if (allLiftedTouchesDrewShortStrokes) {
+        let lineWidth = lineWidth + 1;
+        context##lineWidth #= lineWidth;
+        Js.Array.forEach(
+          points =>
+            Js.Array.forEachi(
+              (point, i) =>
+                if (i == 0) {
+                  context##fillRect(
+                    point.x + 10,
+                    point.y + 10,
+                    lineWidth,
+                    lineWidth,
+                  );
+                } else {
+                  let prevPoint = points[i - 1];
+                  context##beginPath();
+                  context##moveTo(prevPoint.x + 10, prevPoint.y + 10);
+                  context##lineTo(point.x + 10, point.y + 10);
+                  context##stroke();
+                  context##closePath();
+                },
+              points,
+            ),
+          Js.Dict.values(strokes^),
+        );
+
+        strokes := Js.Dict.empty();
+      };
     } else {
       ();
         /* nothing happening here yet */
@@ -89,7 +141,6 @@ canvas##addEventListener("touchend", e => {
 
 canvas##addEventListener("touchmove", e => {
   e##preventDefault();
-  let lineWidth = 2;
   context##fillStyle #= foregroundColor;
   context##strokeStyle #= foregroundColor;
   context##lineWidth #= lineWidth;
@@ -119,6 +170,4 @@ canvas##addEventListener("touchmove", e => {
     },
     Js.Array.from(e##touches),
   );
-
-  previousDrawing := Some("hipattern");
 });

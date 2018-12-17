@@ -1,13 +1,22 @@
+[@bs.config {no_export: no_export}];
 [@bs.val] external document: 'a = "";
 [@bs.val] external window: 'a = "";
 
 document##body##style##margin #= "0";
 
+let foregroundColor = "black";
+let backgroundColor = "white";
+
 let console = document##createElement("div");
-console##style##width #= "200px";
-console##style##height #= "120px";
+console##style##width #= "300px";
+console##style##maxHeight #= "120px";
 console##style##overflow #= "scroll";
 console##style##webkitOverflowScrolling #= "touch";
+console##style##color #= foregroundColor;
+console##style##position #= "absolute";
+console##style##bottom #= "0px";
+console##style##margin #= "0px";
+console##style##fontFamily #= "-apple-system, BlinkMacSystemFont, sans-serif";
 document##body##appendChild(console);
 
 let log = msg => {
@@ -17,13 +26,12 @@ let log = msg => {
 };
 
 let canvas = document##querySelector("#index");
-let (width, height) = (window##innerWidth, 500);
+let (width, height) = (window##innerWidth, window##innerHeight);
 canvas##width #= width;
 canvas##height #= height;
-canvas##style##outline #= "1px solid black";
 
 let context = canvas##getContext("2d");
-context##fillStyle #= "black";
+context##fillStyle #= backgroundColor;
 context##fillRect(0, 0, width, height);
 
 let previousDrawing = ref(None);
@@ -36,7 +44,7 @@ type point = {
   x: int,
   y: int,
 };
-let strokes: array(array('a)) = [||];
+let strokes: ref(Js.Dict.t(array(point))) = ref(Js.Dict.empty());
 let maxTimeForCountingSomethingAsTouch = 150.;
 let objectsOnScene = [||];
 let objectTypes = [|Objs.obj1|];
@@ -45,25 +53,32 @@ let objectTypes = [|Objs.obj1|];
 canvas##addEventListener("touchstart", e => {
   e##preventDefault();
   touching := Down(Js.Date.now());
-  Js.Array.push([||], strokes)->ignore;
-});
+  /* Js.Array.push([||], strokes)->ignore; */
+  /* Js.Array.forEach(
+       touch => {
+         Js.Dict.set(fingers, Js.String.make(touch##identifier),)
+         fingers[touchID] = Some(fingerID);
 
-[@bs.set] external setLength: (array('a), int) => unit = "length";
+         fingerID := fingerID^ + 1;
+       },
+       Js.Array.from(e##targetTouches),
+     ); */
+});
 
 canvas##addEventListener("touchend", e => {
   e##preventDefault();
+  log(Js.Array.map(t => t##identifier, Js.Array.from(e##targetTouches)));
   switch (touching^) {
   | First
   | Up(_) => ()
   | Down(startTime) =>
     let ellapsedTime = Js.Date.now() -. startTime;
-    log(ellapsedTime);
     if (ellapsedTime < maxTimeForCountingSomethingAsTouch) {
       log("commit drawing");
       /* turn dots into an object */
       previousDrawing := None;
       log(strokes);
-      setLength(strokes, 0);
+      strokes := Js.Dict.empty();
     } else {
       ();
         /* nothing happening here yet */
@@ -75,40 +90,35 @@ canvas##addEventListener("touchend", e => {
 canvas##addEventListener("touchmove", e => {
   e##preventDefault();
   let lineWidth = 2;
-  context##fillStyle #= "white";
-  context##strokeStyle #= "white";
+  context##fillStyle #= foregroundColor;
+  context##strokeStyle #= foregroundColor;
   context##lineWidth #= lineWidth;
-  context##globalAlpha #= 0.2;
+  context##globalAlpha #= 1;
 
-  let addPoint = e => {
-    Js.Array.forEach(
-      touch => {
-        let point = {x: touch##clientX, y: touch##clientY};
-        switch (strokes) {
-        | [||] =>
+  Js.Array.forEachi(
+    (touch, i) => {
+      let point = {x: touch##clientX, y: touch##clientY};
+      let id = Js.String.make(e##targetTouches[i]##identifier);
+      let newPoints =
+        switch (Js.Dict.get(strokes^, id)) {
+        | None =>
           context##fillRect(point.x, point.y, lineWidth, lineWidth);
-          Js.Array.push([|point|], strokes)->ignore;
-        | strokes =>
-          let latestStroke = strokes[Js.Array.length(strokes) - 1];
-          switch (latestStroke) {
-          | [||] =>
-            context##fillRect(point.x, point.y, lineWidth, lineWidth);
-            Js.Array.push(point, latestStroke)->ignore;
-          | latestStroke =>
-            let prevPoint = latestStroke[Js.Array.length(latestStroke) - 1];
-            context##beginPath();
-            context##moveTo(prevPoint.x, prevPoint.y);
-            context##lineTo(point.x, point.y);
-            context##stroke();
-            context##closePath();
-            Js.Array.push(point, latestStroke)->ignore;
-          };
+          [|point|];
+        | Some([||]) => raise(Invalid_argument("impossible"))
+        | Some(points) =>
+          let prevPoint = points[Js.Array.length(points) - 1];
+          context##beginPath();
+          context##moveTo(prevPoint.x, prevPoint.y);
+          context##lineTo(point.x, point.y);
+          context##stroke();
+          context##closePath();
+          Js.Array.push(point, points)->ignore;
+          points;
         };
-      },
-      Js.Array.from(e##touches),
-    );
-  };
+      Js.Dict.set(strokes^, id, newPoints);
+    },
+    Js.Array.from(e##touches),
+  );
 
-  addPoint(e);
   previousDrawing := Some("hipattern");
 });

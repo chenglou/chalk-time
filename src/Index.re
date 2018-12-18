@@ -12,15 +12,18 @@ let backgroundColor = "white";
 let lineWidth = 3;
 
 let console = document##createElement("div");
-console##style##width #= "300px";
-console##style##maxHeight #= "120px";
+console##style##maxWidth #= "300px";
+console##style##maxHeight #= "150px";
 console##style##overflow #= "scroll";
 console##style##webkitOverflowScrolling #= "touch";
 console##style##color #= foregroundColor;
 console##style##position #= "absolute";
-console##style##bottom #= "0px";
+console##style##bottom #= "30px";
+console##style##right #= "30px";
 console##style##margin #= "0px";
 console##style##fontFamily #= "-apple-system, BlinkMacSystemFont, sans-serif";
+console##style##transition #= "all 0.2s";
+console##style##zIndex #= 999;
 document##body##appendChild(console);
 
 let log = msg => {
@@ -28,15 +31,40 @@ let log = msg => {
   node##innerText #= Js.Json.stringifyAny(msg);
   ignore(console##prepend(node));
 };
+log("console here");
 
-let canvas = document##querySelector("#index");
 let (width, height) = (window##innerWidth, window##innerHeight);
-canvas##width #= width;
-canvas##height #= height;
 
-let context = canvas##getContext("2d");
-context##fillStyle #= backgroundColor;
-context##fillRect(0, 0, width, height);
+let canvases = document##createElement("div");
+canvases##width #= width;
+canvases##height #= height;
+canvases##style##position #= "absolute";
+document##body##appendChild(canvases);
+
+let staticCanvas = document##createElement("canvas");
+staticCanvas##width #= width;
+staticCanvas##height #= height;
+staticCanvas##style##position #= "absolute";
+canvases##appendChild(staticCanvas);
+
+let staticContext = staticCanvas##getContext("2d");
+staticContext##fillStyle #= backgroundColor;
+staticContext##fillRect(0, 0, width, height);
+
+let drawingCanvas = document##createElement("canvas");
+drawingCanvas##width #= width;
+drawingCanvas##height #= height;
+drawingCanvas##style##position #= "absolute";
+canvases##appendChild(drawingCanvas);
+
+
+next: implement commit workflow #2
+- selectively commit (pixie dust)
+
+
+let drawingContext = drawingCanvas##getContext("2d");
+drawingContext##fillStyle #= "lightgrey";
+drawingContext##fillRect(100, 100, width, height);
 
 type touching =
   | Down(float)
@@ -52,19 +80,31 @@ let objectsOnScene = [||];
 let objectTypes = [|Objs.obj1|];
 /* TODO: Objs.obj1 has too many points */
 
-canvas##addEventListener("touchstart", e => {
-  e##preventDefault();
-  touching := Down(Js.Date.now());
-  /* Js.Array.push([||], strokes)->ignore; */
-  /* Js.Array.forEach(
-       touch => {
-         Js.Dict.set(fingers, Js.String.make(touch##identifier),)
-         fingers[touchID] = Some(fingerID);
+let staticCanvasTouchStart = e => {
+  /* e##preventDefault(); */
 
-         fingerID := fingerID^ + 1;
-       },
-       Js.Array.from(e##targetTouches),
-     ); */
+  log("static");
+
+  touching := Down(Js.Date.now());
+};
+
+let drawingCanvasTouchStart = e => {
+  /* e##preventDefault(); */
+
+  log("drawing");
+  touching := Down(Js.Date.now());
+};
+
+canvases##addEventListener("touchstart", e => {
+  e##preventDefault();
+
+  if (e##target === drawingCanvas) {
+    drawingCanvasTouchStart(e);
+  } else if (e##target === staticCanvas) {
+    staticCanvasTouchStart(e);
+  } else {
+    log("nothing");
+  };
 });
 
 let distance = (p1, p2) => {
@@ -73,8 +113,9 @@ let distance = (p1, p2) => {
   Js.Math.sqrt(float_of_int(x * x + y * y));
 };
 
-canvas##addEventListener("touchend", e => {
+let drawingCanvasTouchEnd = e => {
   e##preventDefault();
+
   switch (touching^) {
   | First
   | Up(_) => ()
@@ -104,13 +145,13 @@ canvas##addEventListener("touchend", e => {
         );
       if (allLiftedTouchesDrewShortStrokes) {
         let lineWidth = lineWidth + 1;
-        context##lineWidth #= lineWidth;
+        staticContext##lineWidth #= lineWidth;
         Js.Array.forEach(
           points =>
             Js.Array.forEachi(
               (point, i) =>
                 if (i == 0) {
-                  context##fillRect(
+                  staticContext##fillRect(
                     point.x + 10,
                     point.y + 10,
                     lineWidth,
@@ -118,11 +159,11 @@ canvas##addEventListener("touchend", e => {
                   );
                 } else {
                   let prevPoint = points[i - 1];
-                  context##beginPath();
-                  context##moveTo(prevPoint.x + 10, prevPoint.y + 10);
-                  context##lineTo(point.x + 10, point.y + 10);
-                  context##stroke();
-                  context##closePath();
+                  staticContext##beginPath();
+                  staticContext##moveTo(prevPoint.x + 10, prevPoint.y + 10);
+                  staticContext##lineTo(point.x + 10, point.y + 10);
+                  staticContext##stroke();
+                  staticContext##closePath();
                 },
               points,
             ),
@@ -137,14 +178,22 @@ canvas##addEventListener("touchend", e => {
     };
   };
   touching := Up(Js.Date.now());
+};
+
+canvases#addEventListener("touchend", e => {
+  e##preventDefault();
+  if (e##target === drawingCanvas) {
+    drawingCanvasTouchEnd(e);
+  };
 });
 
-canvas##addEventListener("touchmove", e => {
+let drawingCanvasTouchMove = e => {
   e##preventDefault();
-  context##fillStyle #= foregroundColor;
-  context##strokeStyle #= foregroundColor;
-  context##lineWidth #= lineWidth;
-  context##globalAlpha #= 1;
+
+  staticContext##fillStyle #= foregroundColor;
+  staticContext##strokeStyle #= foregroundColor;
+  staticContext##lineWidth #= lineWidth;
+  staticContext##globalAlpha #= 1;
 
   Js.Array.forEachi(
     (touch, i) => {
@@ -153,16 +202,16 @@ canvas##addEventListener("touchmove", e => {
       let newPoints =
         switch (Js.Dict.get(strokes^, id)) {
         | None =>
-          context##fillRect(point.x, point.y, lineWidth, lineWidth);
+          staticContext##fillRect(point.x, point.y, lineWidth, lineWidth);
           [|point|];
         | Some([||]) => raise(Invalid_argument("impossible"))
         | Some(points) =>
           let prevPoint = points[Js.Array.length(points) - 1];
-          context##beginPath();
-          context##moveTo(prevPoint.x, prevPoint.y);
-          context##lineTo(point.x, point.y);
-          context##stroke();
-          context##closePath();
+          staticContext##beginPath();
+          staticContext##moveTo(prevPoint.x, prevPoint.y);
+          staticContext##lineTo(point.x, point.y);
+          staticContext##stroke();
+          staticContext##closePath();
           Js.Array.push(point, points)->ignore;
           points;
         };
@@ -170,4 +219,12 @@ canvas##addEventListener("touchmove", e => {
     },
     Js.Array.from(e##touches),
   );
+};
+
+canvases##addEventListener("touchmove", e => {
+  e##preventDefault();
+
+  if (e##target === drawingCanvas) {
+    drawingCanvasTouchMove(e);
+  };
 });

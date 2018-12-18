@@ -33,6 +33,40 @@ let log = msg => {
 };
 log("console here");
 
+type point = {
+  x: int,
+  y: int,
+};
+
+[@bs.module]
+external pointInPolygon: (point, array(point)) => bool = "point-in-polygon";
+
+let highlightPoints = (~color="red", points) => {
+  let nodesContainer = document##createElement("div");
+
+  Belt.Array.forEach(
+    points,
+    ({x, y}) => {
+      let node = document##createElement("div");
+      node##style##width #= "5px";
+      node##style##height #= "5px";
+      node##style##border #= {j|1px solid $color|j};
+      node##style##position #= "absolute";
+      node##style##borderRadius #= "9px";
+      node##style##top #= {j|$(y)px|j};
+      node##style##left #= {j|$(x)px|j};
+      node##style##zIndex #= "99";
+      nodesContainer##appendChild(node);
+    },
+  );
+  document##body##appendChild(nodesContainer);
+  Js.Global.setTimeout(
+    () => document##body##removeChild(nodesContainer),
+    1000,
+  )
+  ->ignore;
+};
+
 let (width, height) = (window##innerWidth, window##innerHeight);
 
 let context = {
@@ -56,10 +90,7 @@ type touching =
   | Up(float)
   | First;
 let touching = ref(First);
-type point = {
-  x: int,
-  y: int,
-};
+
 let strokes: ref(Js.Dict.t(array(point))) = ref(Js.Dict.empty());
 let objectsOnScene = [||];
 let objectTypes = [|Objs.obj1|];
@@ -84,9 +115,66 @@ context##canvas##addEventListener("touchend", e => {
   | First
   | Up(_) => ()
   | Down(startTime) =>
+    let liftedTouches =
+      Js.Array.map(
+        touch => Js.String.make(touch##identifier),
+        Js.Array.from(e##changedTouches),
+      );
+
+    let liftedStrokes =
+      Belt.Array.keepMap(
+        liftedTouches,
+        id => {
+          let stroke = Js.Dict.get(strokes^, id);
+          switch (stroke) {
+          | None => None
+          | Some(stroke) => Some(stroke)
+          };
+        },
+      );
+
+    let otherStrokes =
+      Belt.Array.keepMap(
+        /* [(id1, [...]), (id2, [...])] */
+
+          Js.Dict.entries(strokes^),
+          ((id, stroke)) => {
+            let isLiftedStroke =
+              Js.Array.find(touchId => touchId == id, liftedTouches);
+            switch (isLiftedStroke) {
+            | None => Some(stroke)
+            | Some(_) => None
+            };
+          },
+        );
+
+    Belt.Array.forEach(
+      liftedStrokes,
+      liftedStroke => {
+        highlightPoints(~color="green", liftedStroke);
+
+        let asd =
+          Js.Array.forEach(
+            otherStroke => {
+              let otherStrokeHasSomePointsInLiftedStrokeBounds =
+                Js.Array.some(
+                  point => pointInPolygon(point, liftedStroke),
+                  otherStroke,
+                );
+              if (otherStrokeHasSomePointsInLiftedStrokeBounds) {
+                highlightPoints(otherStroke);
+              };
+            },
+            otherStrokes,
+          );
+        ();
+      },
+    );
+
     let ellapsedTime = Js.Date.now() -. startTime;
     let touchesRemaining = Js.Array.from(e##targetTouches)->Js.Array.length;
     let maxTimeForCountingSomethingAsConfirm = 130.;
+
     if (ellapsedTime < maxTimeForCountingSomethingAsConfirm
         && touchesRemaining == 0) {
       let shortDistanceThreshold = 10.;

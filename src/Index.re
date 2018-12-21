@@ -116,9 +116,8 @@ context##canvas##addEventListener("touchend", e => {
   | Up(_) => ()
   | Down(startTime) =>
     let liftedTouches =
-      Js.Array.map(
-        touch => Js.String.make(touch##identifier),
-        Js.Array.from(e##changedTouches),
+      Belt.Array.map(Js.Array.from(e##changedTouches), touch =>
+        Js.String.make(touch##identifier)
       );
 
     let liftedStrokes =
@@ -154,32 +153,32 @@ context##canvas##addEventListener("touchend", e => {
         highlightPoints(~color="green", liftedStroke);
 
         let asd =
-          Js.Array.forEach(
+          Belt.Array.forEach(
+            otherStrokes,
             otherStroke => {
               let otherStrokeHasSomePointsInLiftedStrokeBounds =
-                Js.Array.some(
-                  point => pointInPolygon(point, liftedStroke),
-                  otherStroke,
+                Belt.Array.some(otherStroke, point =>
+                  pointInPolygon(point, liftedStroke)
                 );
               if (otherStrokeHasSomePointsInLiftedStrokeBounds) {
                 highlightPoints(otherStroke);
               };
             },
-            otherStrokes,
           );
         ();
       },
     );
 
     let ellapsedTime = Js.Date.now() -. startTime;
-    let touchesRemaining = Js.Array.from(e##targetTouches)->Js.Array.length;
+    let touchesRemaining = Js.Array.from(e##targetTouches)->Belt.Array.length;
     let maxTimeForCountingSomethingAsConfirm = 130.;
 
     if (ellapsedTime < maxTimeForCountingSomethingAsConfirm
         && touchesRemaining == 0) {
       let shortDistanceThreshold = 10.;
       let allLiftedTouchesDrewShortStrokes =
-        Js.Array.every(
+        Belt.Array.every(
+          Js.Array.from(e##changedTouches),
           touch => {
             let points =
               Js.Dict.get(strokes^, Js.String.make(touch##identifier));
@@ -188,38 +187,33 @@ context##canvas##addEventListener("touchend", e => {
             | Some([||] | [|_|]) => true
             | Some(points) =>
               let firstPoint = points[0];
-              let lastPoint = points[Js.Array.length(points) - 1];
+              let lastPoint = points[Belt.Array.length(points) - 1];
               let dist = distance(firstPoint, lastPoint);
               dist < shortDistanceThreshold;
             };
           },
-          Js.Array.from(e##changedTouches),
         );
       if (allLiftedTouchesDrewShortStrokes) {
         let lineWidth = lineWidth + 1;
         context##lineWidth #= lineWidth;
-        Js.Array.forEach(
-          points =>
-            Js.Array.forEachi(
-              (point, i) =>
-                if (i == 0) {
-                  context##fillRect(
-                    point.x + 10,
-                    point.y + 10,
-                    lineWidth,
-                    lineWidth,
-                  );
-                } else {
-                  let prevPoint = points[i - 1];
-                  context##beginPath();
-                  context##moveTo(prevPoint.x + 10, prevPoint.y + 10);
-                  context##lineTo(point.x + 10, point.y + 10);
-                  context##stroke();
-                  context##closePath();
-                },
-              points,
-            ),
-          Js.Dict.values(strokes^),
+        Belt.Array.forEach(Js.Dict.values(strokes^), points =>
+          Belt.Array.forEachWithIndex(points, (i, point) =>
+            if (i == 0) {
+              context##fillRect(
+                point.x + 10,
+                point.y + 10,
+                lineWidth,
+                lineWidth,
+              );
+            } else {
+              let prevPoint = points[i - 1];
+              context##beginPath();
+              context##moveTo(prevPoint.x + 10, prevPoint.y + 10);
+              context##lineTo(point.x + 10, point.y + 10);
+              context##stroke();
+              context##closePath();
+            }
+          )
         );
 
         strokes := Js.Dict.empty();
@@ -240,8 +234,9 @@ context##canvas##addEventListener("touchmove", e => {
   context##lineWidth #= lineWidth;
   context##globalAlpha #= 1;
 
-  Js.Array.forEachi(
-    (touch, i) => {
+  Belt.Array.forEachWithIndex(
+    Js.Array.from(e##touches),
+    (i, touch) => {
       let point = {x: touch##clientX, y: touch##clientY};
       let id = Js.String.make(e##targetTouches[i]##identifier);
       let newPoints =
@@ -251,7 +246,7 @@ context##canvas##addEventListener("touchmove", e => {
           [|point|];
         | Some([||]) => raise(Invalid_argument("impossible"))
         | Some(points) =>
-          let prevPoint = points[Js.Array.length(points) - 1];
+          let prevPoint = points[Belt.Array.length(points) - 1];
           context##beginPath();
           context##moveTo(prevPoint.x, prevPoint.y);
           context##lineTo(point.x, point.y);
@@ -262,6 +257,5 @@ context##canvas##addEventListener("touchmove", e => {
         };
       Js.Dict.set(strokes^, id, newPoints);
     },
-    Js.Array.from(e##touches),
   );
 });
